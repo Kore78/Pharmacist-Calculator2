@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Calculadora Farmacêutica</title>
+<link rel="manifest" href="manifest.webmanifest"><meta name="theme-color" content="#1f6feb"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Calc. Farmácia"><link rel="apple-touch-icon" href="icon-192.png">
+<style>
+:root{color-scheme:light dark;--bg:#f6f7f9;--card:#fff;--tx:#1d2330;--mut:#667085;--bd:#d8dce3;--ac:#1f6feb;--hl:#e8f0fe;--ok:#0a7a3d;--er:#c62828}
+@media (prefers-color-scheme:dark){:root{--bg:#14171d;--card:#1d222b;--tx:#e8eaee;--mut:#9aa3b2;--bd:#323a47;--ac:#5b9dff;--hl:#23324d;--ok:#4cd38a;--er:#ff7b72}}
+*{box-sizing:border-box}
+body{margin:0;font-family:system-ui,Segoe UI,Arial,sans-serif;background:var(--bg);color:var(--tx)}
+header{padding:12px 20px;border-bottom:1px solid var(--bd);background:var(--card);display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between}
+h1{font-size:19px;margin:0}
+.tabs button{padding:8px 14px;border:1px solid var(--bd);background:var(--bg);color:var(--tx);cursor:pointer;font-size:14px}
+.tabs button:first-child{border-radius:8px 0 0 8px}.tabs button:last-child{border-radius:0 8px 8px 0;border-left:0}
+.tabs button.on{background:var(--ac);color:#fff;border-color:var(--ac)}
+main{display:grid;grid-template-columns:320px 1fr;gap:16px;padding:16px;max-width:1000px;margin:auto}
+#t2,#t3{grid-template-columns:1fr;max-width:560px}.tabs button+button{border-left:0}
+@media(max-width:720px){main{grid-template-columns:1fr}}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:14px}
+input,select{width:100%;padding:9px;border:1px solid var(--bd);border-radius:8px;background:var(--bg);color:var(--tx);font-size:15px}
+#lista{max-height:56vh;overflow:auto;margin-top:10px}
+.grp{font-size:12px;font-weight:700;color:var(--mut);text-transform:uppercase;margin:10px 0 4px}
+.item{padding:8px 10px;border-radius:8px;cursor:pointer;font-size:15px}
+.item:hover{background:var(--hl)}.item.sel{background:var(--ac);color:#fff}.item.sel small{color:#fff;opacity:.85}
+label{display:block;font-size:13px;color:var(--mut);margin:12px 0 4px}
+.info{font-size:14px;color:var(--mut);line-height:1.5}
+.res{margin-top:16px;padding:14px;border-radius:10px;background:var(--hl);font-size:15px;line-height:1.7}
+.big{font-size:30px;font-weight:700;color:var(--ok)}
+.vazio{color:var(--mut);text-align:center;padding:40px 0}
+small{color:var(--mut)}
+.btn{padding:8px 12px;border:1px solid var(--bd);border-radius:8px;background:var(--bg);color:var(--tx);cursor:pointer;font-size:14px}
+.btn.pri{background:var(--ac);border-color:var(--ac);color:#fff}
+.btn.del{color:var(--er);border-color:var(--er)}
+.row{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+.err{color:var(--er);font-size:13px;margin-top:8px}
+</style>
+</head>
+<body>
+<header>
+  <h1>Calculadora Farmacêutica</h1>
+  <nav class="tabs"><button id="b1" class="on">Líquidos</button><button id="b2">Caneta de semaglutida</button><button id="b3">Insulinas e canetas</button></nav>
+</header>
+
+<main id="t1">
+  <section class="card">
+    <input id="busca" placeholder="Buscar medicamento…" autocomplete="off">
+    <div class="row"><button class="btn pri" id="add">+ Adicionar</button><button class="btn" id="rst">Restaurar lista</button></div>
+    <div id="lista"></div>
+  </section>
+  <section class="card" id="painel"></section>
+</main>
+
+<main id="t2" style="display:none">
+  <section class="card">
+    <h2 style="margin:0 0 4px">Caneta de semaglutida</h2>
+    <div class="info">Informe a dosagem da caneta e quantos mg deseja aplicar.</div>
+    <label>Dosagem da caneta</label><select id="pen"></select>
+    <label>Dose a ser aplicada (mg)</label>
+    <input id="dosesem" type="number" min="0" step="any" inputmode="decimal" placeholder="ex.: 0,35">
+    <div class="row" id="semq"></div>
+    <div id="semres"></div>
+    <p class="info" id="semcpm"></p>
+    <p><small>Cálculo proporcional: cliques = dose × (total de cliques ÷ dosagem da caneta), arredondado para o clique mais próximo.</small></p>
+  </section>
+</main>
+
+<main id="t3" style="display:none"></main>
+
+<script>
+const K="calcfarm_meds_v1";
+// [nome, princípio ativo, concentração, mg/gota, gotas/mL, mL/frasco, tipo] tipo: g=gotas, s=solução (mL), c=colírio
+const BASE=[
+["AMPLICTIL 4%","Clorid. Clorpromazina","4% = 40 mg/mL","1 gt = 1 mg",40,20,"g"],
+["DAFORIN","Clorid. Fluoxetina","20 mg/mL","1 gt = 1 mg",20,20,"g"],
+["DOGMATIL","Sulpirida","20 mg/mL","1 gt = 1 mg",20,30,"g"],
+["EXODUS","Oxalato de Escitalopram","20 mg/mL","1 gt = 1 mg escitalopram base (≈ 1,28 mg de oxalato)",20,15,"g"],
+["GARDENAL 4%","Fenobarbital","4% = 40 mg/mL","1 gt = 1 mg",40,20,"g"],
+["HALDOL","Haloperidol","2 mg/mL","1 gt = 0,1 mg",20,30,"g"],
+["NEOZINE 4%","Levomepromazina","4% = 40 mg/mL","1 gt = 1 mg",40,20,"g"],
+["NEULEPTIL 1%","Periciazina","1% = 10 mg/mL","1 gt = 0,25 mg",40,20,"g"],
+["NEULEPTIL 4%","Periciazina","4% = 40 mg/mL","1 gt = 1 mg",40,20,"g"],
+["RECONTER","Oxalato de Escitalopram","20 mg/mL","1 gt = 1,23 mg oxalato (1 mg escitalopram base)",20,30,"g"],
+["TRAMAL","Clorid. Tramadol","100 mg/mL","1 gt = 2,5 mg",40,10,"g"],
+["LEXOTAN","Bromazepam","2,5 mg/mL","1 gt = 0,1 mg",25,20,"g"],
+["RIVOTRIL","Clonazepam","2,5 mg/mL","1 gt = 0,1 mg",25,20,"g"],
+["DEPAKENE","Valproato de Sódio","250 mg/5 mL","50 mg = 1 mL",0,100,"s"],
+["MELLERIL","Clorid. Tioridazina","30 mg/mL","30 mg = 1 mL",0,50,"s"],
+["TEGRETOL SUSP.","Carbamazepina","2%","20 mg = 1 mL",0,100,"s"],
+["TRILEPTAL SUSP.","Oxcarbazepina","6%","60 mg = 1 mL",0,100,"s"],
+["VALPAKINE","Valproato de Sódio","200 mg/mL","200 mg = 1 mL",0,40,"s"],
+["MAXITROL","Dexametasona 1 mg/mL + Neomicina 5 mg/mL + Polimixina B 6000 UI/mL","—","—",22,5,"c"],
+["TOBREX","Tobramicina","3 mg/mL","1 gt = 0,1 mg",30,5,"c"],
+["RISPERDAL","Risperidona","1 mg/mL","1 mg = 1 mL",0,30,"s"],
+["LYBERDIA","Dimesilato de Lisdexanfetamina","40 mg/mL","1 gt = 2 mg",20,50,"g"]
+];
+const toObj=a=>({n:a[0],p:a[1],c:a[2],mg:a[3],gt:a[4],ml:a[5],t:a[6]});
+// princípios ativos (conferidos em bulas; Biamotil, Cylocort, Duodex, Maxinom e Otociriax ficaram sem)
+const ATV={
+"CILODEX":"Cloridrato de Ciprofloxacino + Dexametasona","CILOXAN":"Cloridrato de Ciprofloxacino",
+"CIPRIXIN DEXA":"Cloridrato de Ciprofloxacino + Dexametasona",
+"DECADRON COLIRIO":"Fosfato Dissódico de Dexametasona + Sulfato de Neomicina",
+"FACOBA":"Cloridrato de Moxifloxacino + Fosfato de Dexametasona",
+"GARASONE":"Fosfato Dissódico de Betametasona + Sulfato de Gentamicina",
+"LIDOSPORIN":"Sulfato de Polimixina B + Cloridrato de Lidocaína",
+"MAXIFLOX":"Cloridrato de Ciprofloxacino","MAXIFLOX-D":"Cloridrato de Ciprofloxacino + Dexametasona",
+"OFLOX":"Ofloxacino","OTO-BETNOVATE":"Betametasona + Clorfenesina + Cloridrato de Tetracaína",
+"OTOSPORIN":"Sulfato de Neomicina + Sulfato de Polimixina B + Hidrocortisona",
+"OTOSYNALAR":"Fluocinolona Acetonida + Sulfato de Polimixina B + Sulfato de Neomicina + Cloridrato de Lidocaína",
+"TOBRACIN":"Tobramicina","TOBRACORT":"Tobramicina + Dexametasona","TOBRADEX":"Tobramicina + Dexametasona",
+"TOBRAMICINA":"Tobramicina","VIGADEXA":"Cloridrato de Moxifloxacino + Fosfato Dissódico de Dexametasona",
+"VIGAMOX":"Cloridrato de Moxifloxacino","ZYLET":"Etabonato de Loteprednol + Tobramicina",
+"ZYMAR":"Gatifloxacino","ZYMAR XD 3 mL":"Gatifloxacino","ZYMAR XD 5 mL":"Gatifloxacino",
+"ZYPRED 3 mL":"Gatifloxacino + Acetato de Prednisolona","ZYPRED 6 mL":"Gatifloxacino + Acetato de Prednisolona"
+};
+// [nome, gotas/mL, mL/frasco] – tabela de gotas de antibióticos
+const NOV=[
+["BIAMOTIL",22,5],["CILODEX",30,5],["CILOXAN",31,5],["CIPRIXIN DEXA",30,5],["CYLOCORT",27,5],
+["DECADRON COLIRIO",30,5],["DUODEX",30,5],["FACOBA",25,5],["GARASONE",30,20],["LIDOSPORIN",37,10],
+["MAXIFLOX",24,5],["MAXIFLOX-D",30,5],["MAXINOM",22,5],["OFLOX",24,5],["OTO-BETNOVATE",39,5],
+["OTOCIRIAX",34,5],["OTOSPORIN",31,5],["OTOSYNALAR",24,5],["TOBRACIN",30,5],["TOBRACORT",30,5],
+["TOBRADEX",30,5],["TOBRAMICINA",30,5],["VIGADEXA",25,5],["VIGAMOX",26,5],["ZYLET",32,5],
+["ZYMAR",24,5],["ZYMAR XD 3 mL",22,3],["ZYMAR XD 5 mL",22,5],["ZYPRED 3 mL",22,3],["ZYPRED 6 mL",22,6]
+].map(a=>toObj([a[0],ATV[a[0]]||"—","—","—",a[1],a[2],"a"]));
+const base=()=>BASE.map(toObj).concat(NOV);
+const FLAG=K+"_antib";
+const G={g:"Medicamentos em gotas",s:"Soluções (dose em mL)",c:"Colírios",a:"Antibióticos (tabela de gotas)"};
+const $=id=>document.getElementById(id);
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const f=n=>n.toLocaleString("pt-BR",{maximumFractionDigits:2});
+let D=null,sel=null,fromSt=false;
+try{D=JSON.parse(localStorage.getItem(K));fromSt=Array.isArray(D)}catch(e){}
+if(!Array.isArray(D))D=base();
+const save=()=>{try{localStorage.setItem(K,JSON.stringify(D))}catch(e){}};
+// lista já salva neste navegador: acrescenta uma única vez os novos medicamentos
+try{if(!localStorage.getItem(FLAG)){if(fromSt)NOV.forEach(m=>{if(!D.some(x=>x.n===m.n))D.push(m)});localStorage.setItem(FLAG,"1");save();}}catch(e){}
+// corrige o Tobrex (30 gotas/mL) em listas já salvas, uma única vez
+try{if(!localStorage.getItem(K+"_tobrex")){D.forEach(m=>{if(m.n==="TOBREX"&&m.gt===33){m.gt=30;m.mg="1 gt = 0,1 mg"}});localStorage.setItem(K+"_tobrex","1");save();}}catch(e){}
+// remove, uma única vez, itens excluídos da lista base em listas já salvas
+try{if(!localStorage.getItem(K+"_rm1")){D=D.filter(m=>!["ANESTALCON 0,5%","ANESTÉSICO","CICLOPÉGICO"].includes(m.n));localStorage.setItem(K+"_rm1","1");save();}}catch(e){}
+// corrige o texto de mg/gota do Exodus em listas já salvas, uma única vez
+try{if(!localStorage.getItem(K+"_exodus")){D.forEach(m=>{if(m.n==="EXODUS"&&String(m.mg).includes("1,23"))m.mg="1 gt = 1 mg escitalopram base (≈ 1,28 mg de oxalato)"});localStorage.setItem(K+"_exodus","1");save();}}catch(e){}
+// acrescenta, uma única vez, Risperdal e Lyberdia em listas já salvas
+try{if(!localStorage.getItem(K+"_nov2")){if(fromSt)["RISPERDAL","LYBERDIA"].forEach(n=>{if(!D.some(x=>x.n===n))D.push(toObj(BASE.find(x=>x[0]===n)))});localStorage.setItem(K+"_nov2","1");save();}}catch(e){}
+// preenche, uma única vez, os princípios ativos em listas já salvas
+try{if(!localStorage.getItem(K+"_atv")){D.forEach(m=>{if(m.t==="a"&&(!m.p||m.p==="—")&&ATV[m.n])m.p=ATV[m.n]});localStorage.setItem(K+"_atv","1");save();}}catch(e){}
+
+// ---------- abas ----------
+function aba(n){[1,2,3].forEach(i=>{$("t"+i).style.display=i===n?"grid":"none";$("b"+i).className=i===n?"on":"";});}
+$("b1").onclick=()=>aba(1);$("b2").onclick=()=>aba(2);$("b3").onclick=()=>aba(3);
+
+// ---------- lista ----------
+function lista(){
+  const nz=x=>String(x).normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase();
+  const q=nz($("busca").value),el=$("lista");el.innerHTML="";
+  ["g","s","c","a"].forEach(t=>{
+    let h=false;
+    D.forEach((m,i)=>{
+      if(m.t!==t||!nz(m.n+" "+m.p).includes(q))return;
+      if(!h){h=true;el.insertAdjacentHTML("beforeend",`<div class="grp">${G[t]}</div>`);}
+      const d=document.createElement("div");d.className="item"+(i===sel?" sel":"");d.innerHTML=esc(m.n)+(m.p&&m.p!=="—"?`<br><small>${esc(m.p)}</small>`:"");
+      d.onclick=()=>{sel=i;lista();painel();};el.appendChild(d);
+    });
+  });
+}
+$("busca").oninput=lista;
+$("add").onclick=()=>{sel="novo";lista();painel();};
+$("rst").onclick=()=>{if(confirm("Restaurar a lista original? Medicamentos adicionados serão perdidos.")){D=base();save();sel=null;lista();painel();}};
+
+// ---------- painel de cálculo ----------
+function painel(){
+  const P=$("painel");
+  if(sel==="novo")return form();
+  if(sel===null||!D[sel]){P.innerHTML='<div class="vazio">Selecione um medicamento na lista.</div>';return;}
+  const m=D[sel],sol=m.t==="s";
+  P.innerHTML=`
+    <div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start">
+      <h2 style="margin:0 0 4px">${esc(m.n)}</h2><button class="btn del" id="rem">Remover</button></div>
+    <div class="info">${[m.p,m.c!=="—"&&"Concentração: "+m.c,m.mg].filter(x=>x&&x!=="—").map(esc).join("<br>")}<br>
+    Frasco: <b>${f(m.ml)} mL</b>${sol?"":` · ${f(m.gt)} gotas/mL · <b>${f(m.gt*m.ml)} gotas por frasco</b>`}</div>
+    <label>${sol?"Dose por administração (mL)":"Gotas (por administração)"}</label>
+    <input id="dose" type="number" min="0" step="any" inputmode="decimal">
+    <label>Quantidade a ser administrada/dia</label>
+    <input id="vezes" type="number" min="0" step="any" inputmode="decimal">
+    <label>Quantidade de dias</label>
+    <input id="dias" type="number" min="0" step="1" inputmode="numeric">
+    <div id="res"></div>`;
+  ["dose","vezes","dias"].forEach(id=>$(id).oninput=calc);
+  $("rem").onclick=()=>{if(confirm(`Remover "${m.n}" da lista?`)){D.splice(sel,1);save();sel=null;lista();painel();}};
+}
+function calc(){
+  const m=D[sel],sol=m.t==="s";
+  const dose=parseFloat($("dose").value),v=parseFloat($("vezes").value),d=parseFloat($("dias").value),r=$("res");
+  if(!(dose>0&&v>0&&d>0)){r.innerHTML="";return;}
+  const total=dose*v*d,ml=sol?total:total/m.gt;
+  const txt=sol?`Total: <b>${f(total)} mL</b>`:`Total: <b>${f(total)} gotas</b> (≈ ${f(ml)} mL)`;
+  const frascos=Math.ceil(ml/m.ml-1e-9),sobra=frascos*m.ml-ml;
+  r.innerHTML=`<div class="res">
+    Posologia: ${f(dose)} ${sol?"mL":"gotas"} × ${f(v)}/dia × ${f(d)} dias<br>${txt}<br>
+    Frascos a dispensar:<div class="big">${frascos} ${frascos===1?"frasco":"frascos"}</div>
+    <small>Sobra estimada: ${f(sobra)} mL${sol?"":` (${f(sobra*m.gt)} gotas)`}</small></div>`;
+}
+
+// ---------- adicionar medicamento ----------
+function form(){
+  $("painel").innerHTML=`<h2 style="margin:0">Adicionar medicamento</h2>
+  <label>Nome</label><input id="fn">
+  <label>Princípio ativo</label><input id="fp">
+  <label>Concentração (opcional)</label><input id="fc" placeholder="ex.: 20 mg/mL">
+  <label>Tipo</label><select id="ft"><option value="g">Gotas</option><option value="s">Solução (dose em mL)</option><option value="c">Colírio</option><option value="a">Antibiótico (colírio/otológico)</option></select>
+  <div id="fgw"><label>Gotas por mL</label><input id="fg" type="number" min="0" step="any"></div>
+  <label>Volume do frasco (mL)</label><input id="fm" type="number" min="0" step="any">
+  <label>mg por gota / mL (opcional)</label><input id="fd" placeholder="ex.: 1 gt = 1 mg">
+  <div class="row"><button class="btn pri" id="fs">Salvar</button><button class="btn" id="fx">Cancelar</button></div>
+  <div id="ferr" class="err"></div>`;
+  $("ft").onchange=()=>{$("fgw").style.display=$("ft").value==="s"?"none":"block";};
+  $("fx").onclick=()=>{sel=null;lista();painel();};
+  $("fs").onclick=()=>{
+    const n=$("fn").value.trim(),t=$("ft").value,gt=parseFloat($("fg").value)||0,ml=parseFloat($("fm").value)||0;
+    if(!n)return $("ferr").textContent="Informe o nome.";
+    if(t!=="s"&&!(gt>0))return $("ferr").textContent="Informe as gotas por mL.";
+    if(!(ml>0))return $("ferr").textContent="Informe o volume do frasco.";
+    D.push({n,p:$("fp").value.trim()||"—",c:$("fc").value.trim()||"—",mg:$("fd").value.trim()||"—",gt:t==="s"?0:gt,ml,t});
+    save();sel=D.length-1;$("busca").value="";lista();painel();
+  };
+}
+
+// ---------- semaglutida ----------
+// [dosagem da caneta (mg), total de cliques da caneta]. Lógica (da tabela): cliques = dose × (total ÷ dosagem)
+const SEM=[[0.25,36],[0.5,36],[1,72],[1.7,72],[2.4,72]];
+const mg=n=>n.toLocaleString("pt-BR")+" mg";
+$("pen").innerHTML=SEM.map((s,i)=>`<option value="${i}">${mg(s[0])}</option>`).join("");
+function quick(){
+  const s=SEM[$("pen").value],q=$("semq");q.innerHTML="";
+  [0.25,0.5,0.75,1,1.7,2.4].filter(d=>d<=s[0]+1e-9).forEach(d=>{
+    const b=document.createElement("button");b.className="btn";b.textContent=mg(d);
+    b.onclick=()=>{$("dosesem").value=d;semCalc();};q.appendChild(b);
+  });
+}
+function semCalc(){
+  const s=SEM[$("pen").value],cpm=s[1]/s[0],dose=parseFloat($("dosesem").value),r=$("semres");
+  $("semcpm").textContent=`Esta caneta: ${f(cpm)} cliques por mg (${s[1]} cliques = ${mg(s[0])}).`;
+  if(!(dose>0)){r.innerHTML="";return;}
+  if(dose>s[0]+1e-9){r.innerHTML=`<div class="err">A dose é maior que a dosagem da caneta (${mg(s[0])}).</div>`;return;}
+  const ex=dose*cpm,cl=Math.round(ex);
+  if(cl<1){r.innerHTML='<div class="err">Dose menor que 1 clique.</div>';return;}
+  r.innerHTML=`<div class="res">Caneta de ${mg(s[0])} · dose de ${mg(dose)}<div class="big">${cl} ${cl===1?"clique":"cliques"}</div>
+    <small>Cálculo exato: ${f(ex)} cliques</small></div>`;
+}
+$("pen").onchange=()=>{quick();semCalc();};$("dosesem").oninput=semCalc;
+
+// ---------- insulinas e canetas ----------
+// u: unidade da dose (mg ou UI) | cm: concentração por mL | v: mL por caneta/ampola/carpule | k: unidades na embalagem | x: mg de liraglutida por UI (Xultophy)
+const INS=[
+{n:"Olire (3 canetas)",p:"Liraglutida",c:"6 mg/mL",u:"mg",cm:6,v:3,k:3,s:"caneta"},
+{n:"Olire (1 caneta)",p:"Liraglutida",c:"6 mg/mL",u:"mg",cm:6,v:3,k:1,s:"caneta"},
+{n:"Saxenda (3 canetas)",p:"Liraglutida",c:"6 mg/mL",u:"mg",cm:6,v:3,k:3,s:"caneta"},
+{n:"Xultophy",p:"Insulina Degludeca + Liraglutida",c:"100 UI/mL + 3,6 mg/mL",u:"UI",cm:100,v:3,k:1,s:"caneta",x:0.036},
+{n:"Novolin NPH (ampola)",p:"Insulina Humana",c:"100 UI/mL",u:"UI",cm:100,v:10,k:1,s:"ampola"},
+{n:"Novolin NPH (carpule)",p:"Insulina Humana",c:"100 UI/mL",u:"UI",cm:100,v:3,k:5,s:"carpule"},
+{n:"Novolin Regular (ampola)",p:"Insulina Humana",c:"100 UI/mL",u:"UI",cm:100,v:10,k:1,s:"ampola"},
+{n:"Novolin Regular (carpule)",p:"Insulina Humana",c:"100 UI/mL",u:"UI",cm:100,v:3,k:5,s:"carpule"}
+];
+const pl=(n,w)=>n===1?w:w+"s";
+function insRender(){
+  const num=(id,l)=>`<label>${l}</label><input id="${id}" type="number" min="0" step="any" inputmode="decimal">`;
+  $("t3").innerHTML=`<section class="card"><h2 style="margin:0 0 4px">Insulinas e canetas</h2>
+    <label>Produto</label><select id="insp">${INS.map((m,i)=>`<option value="${i}">${esc(m.n)}</option>`).join("")}</select>
+    <div class="info" id="insinfo" style="margin-top:8px"></div>
+    <label>Frequência</label><select id="insf"><option value="d">Diário</option><option value="w">Semanal (1 aplicação por semana)</option></select>
+    <div id="insmw"><label>Posologia</label><select id="insm"><option value="u">Dose única ao dia</option><option value="s">Manhã / Tarde / Noite</option></select></div>
+    <div id="insone"><label id="insdl">Dose</label><input id="insdose" type="number" min="0" step="any" inputmode="decimal"></div>
+    <div id="inssplit" style="display:none">${num("im","Manhã")}${num("it","Tarde")}${num("inn","Noite")}</div>
+    ${num("insdias","Quantidade de dias")}
+    <div id="insres"></div>
+    <p><small>Semanal: conta 1 aplicação a cada 7 dias (dias ÷ 7, arredondado para cima). O cálculo não inclui a perda de purga das canetas nem a validade após aberto.</small></p></section>`;
+  ["insp","insf","insm"].forEach(id=>$(id).onchange=insUpd);
+  ["insdose","im","it","inn","insdias"].forEach(id=>$(id).oninput=insCalc);
+  insUpd();
+}
+function insUpd(){
+  const m=INS[$("insp").value],w=$("insf").value==="w",sp=!w&&$("insm").value==="s";
+  $("insinfo").innerHTML=`${esc(m.p)}<br>Concentração: ${esc(m.c)}<br>Cada ${m.s}: <b>${f(m.v)} mL</b> = ${f(m.cm*m.v)} ${m.u}${m.x?` (+ ${f(m.cm*m.v*m.x)} mg de liraglutida)`:""}<br>Embalagem: <b>${m.k} ${pl(m.k,m.s)}</b>`;
+  $("insmw").style.display=w?"none":"block";
+  $("insone").style.display=sp?"none":"block";$("inssplit").style.display=sp?"block":"none";
+  $("insdl").textContent=`Dose (${m.u}${w?" por semana":""})`;
+  insCalc();
+}
+function insCalc(){
+  const m=INS[$("insp").value],w=$("insf").value==="w",sp=!w&&$("insm").value==="s",r=$("insres");
+  const dias=parseFloat($("insdias").value);
+  const doses=sp?["im","it","inn"].map(id=>parseFloat($(id).value)||0):[parseFloat($("insdose").value)||0];
+  const porDia=doses.reduce((a,b)=>a+b,0),nDoses=doses.filter(d=>d>0).length;
+  if(!(porDia>0&&dias>0)){r.innerHTML="";return;}
+  const ciclos=w?Math.ceil(dias/7):dias,apl=ciclos*nDoses,total=porDia*ciclos;
+  const per=m.cm*m.v,un=Math.ceil(total/per-1e-9),emb=Math.ceil(un/m.k),sobra=emb*m.k*per-total;
+  r.innerHTML=`<div class="res">${w?"Semanal":"Diário"}: ${f(apl)} ${pl(apl,"aplicação").replace("aplicaçãos","aplicações")}<br>
+    Total necessário: <b>${f(total)} ${m.u}</b>${m.x?` (≈ ${f(total*m.x)} mg de liraglutida)`:""}<br>
+    ${f(un)} ${pl(un,m.s)} (${f(per)} ${m.u} cada)<br>
+    Dispensar:<div class="big">${emb} ${pl(emb,"embalagem")}</div>
+    <small>${m.k} ${pl(m.k,m.s)} por embalagem · sobra estimada: ${f(sobra)} ${m.u}</small></div>`;
+}
+insRender();
+
+lista();painel();quick();semCalc();
+</script>
+<script>if("serviceWorker" in navigator)addEventListener("load",()=>navigator.serviceWorker.register("sw.js").catch(()=>{}))</script>
+</body>
+</html>
